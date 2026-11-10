@@ -1,5 +1,6 @@
 import { BarChart } from '@mantine/charts';
 import {
+  ActionIcon,
   Anchor,
   Badge,
   Button,
@@ -24,6 +25,7 @@ import {
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
+import { useMediaQuery } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconAlertTriangle,
@@ -59,7 +61,7 @@ import {
   useCanEdit,
   type SortDir,
 } from '../components/common';
-import { money, monthLabel, monthShort, moneyCompact, SERIES_ORDER, signedMoney, thisMonth } from '../format';
+import { money, monthLabel, moneyCompact, SERIES_ORDER, signedMoney, thisMonth } from '../format';
 import type {
   CategoryKind,
   IncomeStatement,
@@ -122,6 +124,15 @@ function loadUnexpectedSort(): UnexpectedSort {
   return 'newest';
 }
 
+const UNEXPECTED_SORTS = [
+  { value: 'newest', label: 'Newest' },
+  { value: 'largest', label: 'Largest' },
+  { value: 'smallest', label: 'Smallest' },
+];
+
+/** Phones: below Mantine's xs breakpoint, like the phone rules in styles.css. */
+const PHONE = '(max-width: 36em)';
+
 function saveUnexpectedSort(sort: UnexpectedSort) {
   try {
     localStorage.setItem(UNEXPECTED_SORT_KEY, sort);
@@ -156,6 +167,11 @@ export default function IncomeStatementPage() {
   const [unexpectedSearch, setUnexpectedSearch] = useState('');
   const [unexpectedSort, setUnexpectedSort] = useState<UnexpectedSort>(loadUnexpectedSort);
   const [byCategory, setByCategory] = useState(loadByCategory);
+  const phone = useMediaQuery(PHONE) ?? false;
+  const changeUnexpectedSort = (next: UnexpectedSort) => {
+    setUnexpectedSort(next);
+    saveUnexpectedSort(next);
+  };
 
   const { data: txns = [] } = useQuery({ queryKey: ['transactions', month], queryFn: () => api.transactions(month) });
   // While a month loads, `statement` still holds the previous month's (placeholderData); isPlaceholderData says so.
@@ -218,7 +234,13 @@ export default function IncomeStatementPage() {
   // always holds January through now, and each month follows its own totals source (statement or manual).
   const year = thisMonth().slice(0, 4);
   const yearTrend = trend.filter((p) => p.month.startsWith(year));
-  const trendData = yearTrend.map((p) => ({ month: monthShort(p.month), Income: p.income, Expenses: p.expenses, Net: p.net }));
+  // Just the month's name: the card title gives the year.
+  const trendData = yearTrend.map((p) => ({
+    month: dayjs(`${p.month}-01`).format('MMM'),
+    Income: p.income,
+    Expenses: p.expenses,
+    Net: p.net,
+  }));
   const hasTrend = yearTrend.some((p) => p.income || p.expenses);
   const ytd = yearTrend.reduce(
     (t, p) => ({ income: t.income + p.income, expenses: t.expenses + p.expenses }),
@@ -320,7 +342,8 @@ export default function IncomeStatementPage() {
           title="Unexpected items"
           actions={
             allUnexpected.length > 0 && (
-              <>
+              // Phones: the search and a sort dropdown share one row.
+              <Group gap="xs" wrap="nowrap" w={{ base: '100%', xs: 'auto' }}>
                 <TextInput
                   size="xs"
                   placeholder="Search"
@@ -328,30 +351,35 @@ export default function IncomeStatementPage() {
                   leftSection={<IconSearch size={14} />}
                   value={unexpectedSearch}
                   onChange={(e) => setUnexpectedSearch(e.currentTarget.value)}
-                  w={{ base: '100%', xs: 180 }}
+                  w={{ base: 'auto', xs: 180 }}
+                  style={phone ? { flex: 1, minWidth: 0 } : undefined}
                 />
-                <SegmentedControl
-                  size="xs"
-                  aria-label="Sort unexpected items"
-                  value={unexpectedSort}
-                  onChange={(v) => {
-                    setUnexpectedSort(v as UnexpectedSort);
-                    saveUnexpectedSort(v as UnexpectedSort);
-                  }}
-                  data={[
-                    { value: 'newest', label: 'Newest' },
-                    { value: 'largest', label: 'Largest' },
-                    { value: 'smallest', label: 'Smallest' },
-                  ]}
-                />
-              </>
+                {phone ? (
+                  <Select
+                    aria-label="Sort unexpected items"
+                    w={124}
+                    allowDeselect={false}
+                    value={unexpectedSort}
+                    onChange={(v) => v && changeUnexpectedSort(v as UnexpectedSort)}
+                    data={UNEXPECTED_SORTS}
+                  />
+                ) : (
+                  <SegmentedControl
+                    size="xs"
+                    aria-label="Sort unexpected items"
+                    value={unexpectedSort}
+                    onChange={(v) => changeUnexpectedSort(v as UnexpectedSort)}
+                    data={UNEXPECTED_SORTS}
+                  />
+                )}
+              </Group>
             )
           }
         >
           <Editable>
-            <QuickUnexpected key={month} month={month} defaults={unexpectedDefaults} />
+            <QuickUnexpected key={month} month={month} defaults={unexpectedDefaults} phone={phone} />
           </Editable>
-          <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xl" verticalSpacing="lg">
+          <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xl" verticalSpacing="xl">
             {(['expense', 'income'] as const).map((kind) => (
               <UnexpectedList
                 // A new search or order starts back on page 1.
@@ -360,6 +388,7 @@ export default function IncomeStatementPage() {
                 items={unexpected.filter((t) => t.category.kind === kind)}
                 searching={unexpectedTerm !== ''}
                 rowActions={rowActions}
+                phone={phone}
               />
             ))}
           </SimpleGrid>
@@ -411,8 +440,11 @@ export default function IncomeStatementPage() {
                 onChange={(e) => setSearch(e.currentTarget.value)}
                 w={{ base: '100%', xs: 180 }}
               />
+              {/* Phones: full width with regular-size text, so the three options aren't crammed together. */}
               <SegmentedControl
-                size="xs"
+                size={phone ? 'sm' : 'xs'}
+                fullWidth={phone}
+                w={phone ? '100%' : undefined}
                 value={filter}
                 onChange={(v) => setFilter(v as Filter)}
                 data={[
@@ -521,13 +553,14 @@ export default function IncomeStatementPage() {
         <SectionCard title={`Income vs. expenses · ${year}`}>
           {hasTrend && (
             <SimpleGrid cols={3} spacing="sm" mb="md">
+              {/* The card title names the year; phones drop "YTD", which wrapped the labels there. */}
               {[
-                { label: `Income · ${year} YTD`, value: ytd.income },
-                { label: `Expenses · ${year} YTD`, value: ytd.expenses },
-                { label: `Net · ${year} YTD`, value: ytd.income - ytd.expenses },
+                { label: 'Income', value: ytd.income },
+                { label: 'Expenses', value: ytd.expenses },
+                { label: 'Net', value: ytd.income - ytd.expenses },
               ].map((f) => (
                 <div key={f.label}>
-                  <Text className="label-sm">{f.label}</Text>
+                  <Text className="label-sm">{phone ? f.label : `${f.label} YTD`}</Text>
                   <Text
                     className={`headline num${f.label.startsWith('Net') && f.value < 0 ? ' delta-down' : ''}`}
                     fw={700}
@@ -541,8 +574,11 @@ export default function IncomeStatementPage() {
             </SimpleGrid>
           )}
           {hasTrend ? (
+            // Phones turn the bars sideways, one row per month, so every month is labeled and the bars
+            // aren't squeezed to slivers. Each row keeps the same order: income, expenses, net.
             <BarChart
-              h={280}
+              h={phone ? trendData.length * 44 + 64 : 280}
+              orientation={phone ? 'vertical' : 'horizontal'}
               data={trendData}
               dataKey="month"
               series={[
@@ -553,12 +589,14 @@ export default function IncomeStatementPage() {
               withLegend
               legendProps={{ verticalAlign: 'top', height: 36, itemSorter: SERIES_ORDER }}
               valueFormatter={(v) => money(v)}
-              yAxisProps={{ tickFormatter: (v: number) => moneyCompact(v), width: 56 }}
-              gridAxis="x"
+              // Money ticks go on the value axis: y normally, x when the bars run sideways.
+              yAxisProps={phone ? { width: 36 } : { tickFormatter: (v: number) => moneyCompact(v), width: 56 }}
+              xAxisProps={phone ? { tickFormatter: (v: number) => moneyCompact(v), tickCount: 4 } : undefined}
+              gridAxis={phone ? 'y' : 'x'}
               strokeDasharray="0"
-              barProps={{ radius: [4, 4, 0, 0] }}
+              barProps={{ radius: phone ? [0, 4, 4, 0] : [4, 4, 0, 0] }}
               barChartProps={{ barGap: 2 }}
-              maxBarWidth={24}
+              maxBarWidth={phone ? 10 : 24}
             />
           ) : (
             <EmptyState message={`Your ${year} months will appear here as you add transactions.`} />
@@ -709,17 +747,35 @@ function BudgetSummary({ statement: s }: { statement: IncomeStatement }) {
 
   return (
     <>
-      <Table.ScrollContainer minWidth={560} className="phone-fit">
+      {/* Phones: five columns don't fit, so each row becomes a block with its figures in a 2×2 grid. */}
+      <Stack gap="sm" className="show-xs">
+        {rows.map((r) => {
+          const diff = cents(r.actual - r.budget);
+          return (
+            <div key={r.label} className="budget-block">
+              <Group justify="space-between" gap="xs" wrap="nowrap" mb="xs">
+                <Text fw={600}>{r.label}</Text>
+                <Delta value={diff} goodWhen={r.goodWhen} suffix="vs. budget" />
+              </Group>
+              <SimpleGrid cols={2} spacing="sm" verticalSpacing="xs">
+                <BudgetFigure label="Budget">{money(r.budget)}</BudgetFigure>
+                <BudgetFigure label="Actual">{money(r.actual)}</BudgetFigure>
+                <BudgetFigure label="Unexpected items">{r.unexpected ? signedMoney(cents(r.unexpected)) : '—'}</BudgetFigure>
+                <BudgetFigure label="Everything else">
+                  <Delta value={cents(diff - r.unexpected)} goodWhen={r.goodWhen} />
+                </BudgetFigure>
+              </SimpleGrid>
+            </div>
+          );
+        })}
+      </Stack>
+      <Table.ScrollContainer minWidth={560} className="hide-xs">
         <Table verticalSpacing={6}>
           <Table.Thead>
             <Table.Tr>
               <Table.Th />
-              <Table.Th ta="right" className="hide-xs">
-                Budget
-              </Table.Th>
-              <Table.Th ta="right" className="hide-xs">
-                Actual
-              </Table.Th>
+              <Table.Th ta="right">Budget</Table.Th>
+              <Table.Th ta="right">Actual</Table.Th>
               <Table.Th ta="right">vs. budget</Table.Th>
               <Table.Th ta="right">Unexpected items</Table.Th>
               <Table.Th ta="right">Everything else</Table.Th>
@@ -731,10 +787,10 @@ function BudgetSummary({ statement: s }: { statement: IncomeStatement }) {
               return (
                 <Table.Tr key={r.label}>
                   <Table.Td fw={500}>{r.label}</Table.Td>
-                  <Table.Td ta="right" className="num hide-xs">
+                  <Table.Td ta="right" className="num">
                     {money(r.budget)}
                   </Table.Td>
-                  <Table.Td ta="right" className="num hide-xs">
+                  <Table.Td ta="right" className="num">
                     {money(r.actual)}
                   </Table.Td>
                   <Table.Td ta="right">
@@ -763,6 +819,17 @@ function BudgetSummary({ statement: s }: { statement: IncomeStatement }) {
         Everything else is the difference from budget that your unexpected items don&apos;t account for.
       </Text>
     </>
+  );
+}
+
+function BudgetFigure({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <Text className="label-sm">{label}</Text>
+      <Text component="div" size="sm" className="num" fw={500} mt={2}>
+        {children}
+      </Text>
+    </div>
   );
 }
 
@@ -802,9 +869,11 @@ function CardItems({ names }: { names: string[] }) {
 function QuickUnexpected({
   month,
   defaults,
+  phone,
 }: {
   month: string;
   defaults: Record<CategoryKind, number | undefined>;
+  phone: boolean;
 }) {
   const [kind, setKind] = useState<CategoryKind>('expense');
   const [description, setDescription] = useState('');
@@ -848,8 +917,10 @@ function QuickUnexpected({
 
   return (
     <form onSubmit={submit}>
-      {/* One line on wide screens; wraps to two on narrow ones. */}
-      <Group gap="xs" wrap="wrap" mb="lg" align="flex-start">
+      {/* One line on wide screens; wraps to two on narrow ones. Phones get two rows (quick-entry in
+          styles.css): what you type each time (amount, description, Add), then type and category,
+          which stay as they were between entries. */}
+      <Group gap="xs" wrap="wrap" mb="lg" align="flex-start" className="quick-entry">
           <NumberInput
             ref={amountRef}
             size="sm"
@@ -863,17 +934,20 @@ function QuickUnexpected({
             value={amount}
             onChange={setAmount}
             w={140}
+            className="qe-amount"
           />
           <TextInput
             size="sm"
-            placeholder={kind === 'expense' ? 'What was it? e.g. Car repair' : 'What was it? e.g. Birthday money'}
+            placeholder={phone ? 'What was it?' : kind === 'expense' ? 'What was it? e.g. Car repair' : 'What was it? e.g. Birthday money'}
             aria-label="Description"
             value={description}
             onChange={(e) => setDescription(e.currentTarget.value)}
             style={{ flex: '2 1 220px' }}
+            className="qe-description"
           />
           <SegmentedControl
             size="sm"
+            className="qe-kind"
             value={kind}
             onChange={(v) => {
               const next = v as CategoryKind;
@@ -893,10 +967,25 @@ function QuickUnexpected({
             value={categoryId}
             onChange={setCategoryId}
             style={{ flex: '1 1 160px' }}
+            className="qe-category"
           />
-          <Button type="submit" size="sm" leftSection={<IconPlus size={16} />} disabled={!valid} loading={add.isPending}>
-            Add
-          </Button>
+          {phone ? (
+            <ActionIcon
+              type="submit"
+              variant="gradient"
+              radius="xl"
+              aria-label="Add"
+              className="qe-add"
+              disabled={!valid}
+              loading={add.isPending}
+            >
+              <IconPlus size={20} />
+            </ActionIcon>
+          ) : (
+            <Button type="submit" size="sm" leftSection={<IconPlus size={16} />} disabled={!valid} loading={add.isPending}>
+              Add
+            </Button>
+          )}
       </Group>
     </form>
   );
@@ -912,11 +1001,13 @@ function UnexpectedList({
   items,
   searching,
   rowActions,
+  phone,
 }: {
   kind: CategoryKind;
   items: Transaction[];
   searching: boolean;
   rowActions: (t: Transaction) => ReactNode;
+  phone: boolean;
 }) {
   const expenses = kind === 'expense';
   const noted = cents(items.reduce((t, i) => t + i.amount, 0));
@@ -935,9 +1026,19 @@ function UnexpectedList({
 
   return (
     <div>
-      <Text className="label-sm" mb={4}>
-        {expenses ? 'Unexpected expenses' : 'Unexpected income'}
-      </Text>
+      {/* A real heading with the chart's income/expense color as a marker, so the two lists are easy to
+          tell apart (the words still say which is which). */}
+      <Group gap={8} wrap="nowrap" mb={6}>
+        <span className="list-marker" style={{ background: expenses ? 'var(--chart-expenses)' : 'var(--chart-income)' }} aria-hidden />
+        <Text className="headline" fw={700} size="md">
+          {expenses ? 'Unexpected expenses' : 'Unexpected income'}
+        </Text>
+        {items.length > 0 && (
+          <Text size="sm" c="dimmed" className="num">
+            {items.length}
+          </Text>
+        )}
+      </Group>
       {items.length === 0 ? (
         <Text size="sm" c="dimmed" py={6}>
           {searching ? 'No matches.' : 'None noted yet.'}
@@ -972,11 +1073,21 @@ function UnexpectedList({
         </Table>
       )}
       {pages > 1 && (
-        <Group justify="space-between" mt="xs" gap="xs">
+        <Group justify="space-between" mt="xs" gap="xs" wrap="nowrap">
           <Text size="xs" c="dimmed" className="num">
             {first + 1}–{first + shown.length} of {items.length}
           </Text>
-          <Pagination size="sm" total={pages} value={current} onChange={setPage} />
+          {/* Phones: just the arrows (page numbers at 44px wrapped to a second row); the count says where you are. */}
+          {phone ? (
+            <Pagination.Root size="sm" total={pages} value={current} onChange={setPage}>
+              <Group gap="xs" wrap="nowrap">
+                <Pagination.Previous aria-label="Previous page" />
+                <Pagination.Next aria-label="Next page" />
+              </Group>
+            </Pagination.Root>
+          ) : (
+            <Pagination size="sm" total={pages} value={current} onChange={setPage} />
+          )}
         </Group>
       )}
     </div>
@@ -1106,11 +1217,11 @@ function BudgetVsActual({ statement }: { statement: IncomeStatement }) {
     rows.length > 0 && (
       <>
         <Table.Tr>
-          <Table.Th colSpan={3} bg="var(--mantine-color-default-hover)">
+          {/* Split so the cells hidden on phones are their own (CLAUDE.md: keep cells aligned). */}
+          <Table.Th colSpan={2} bg="var(--mantine-color-default-hover)">
             {kind === 'income' ? 'Income' : 'Expenses'}
           </Table.Th>
-          <Table.Th className="hide-xs" bg="var(--mantine-color-default-hover)">
-          </Table.Th>
+          <Table.Th colSpan={2} className="hide-xs" bg="var(--mantine-color-default-hover)" />
         </Table.Tr>
         {rows.map((c) => {
           const ratio = c.budgeted > 0 ? c.actual / c.budgeted : null;
@@ -1122,6 +1233,10 @@ function BudgetVsActual({ statement }: { statement: IncomeStatement }) {
                   <CategoryDot color={c.color} />
                   <Text size="sm">{c.name}</Text>
                 </Group>
+                {/* Phones hide the budget column too; it sits under the name, leaving the name room. */}
+                <Text size="xs" c="dimmed" className="show-xs num">
+                  {c.budgeted ? `Budget ${money(c.budgeted)}` : 'Unbudgeted'}
+                </Text>
                 {c.card_items.length > 0 && <CardItems names={c.card_items} />}
                 {ratio != null && (
                   <Progress
@@ -1133,7 +1248,7 @@ function BudgetVsActual({ statement }: { statement: IncomeStatement }) {
                   />
                 )}
               </Table.Td>
-              <Table.Td ta="right" className="num">
+              <Table.Td ta="right" className="num hide-xs">
                 {c.budgeted ? money(c.budgeted) : '—'}
               </Table.Td>
               <Table.Td ta="right" className="num">
@@ -1168,7 +1283,9 @@ function BudgetVsActual({ statement }: { statement: IncomeStatement }) {
         <Table.Thead>
           <Table.Tr>
             <Table.Th>Category</Table.Th>
-            <Table.Th ta="right">Budgeted</Table.Th>
+            <Table.Th ta="right" className="hide-xs">
+              Budgeted
+            </Table.Th>
             <Table.Th ta="right">Actual</Table.Th>
             <Table.Th ta="right" className="hide-xs">
               Difference

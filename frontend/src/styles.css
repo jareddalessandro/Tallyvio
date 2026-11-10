@@ -563,3 +563,60 @@ body {
     --badge-height: 1.25rem !important;
   }
 }
+
+/* ---------- Phones: Income Statement ---------- */
+@media (max-width: 36em) {
+  /* Unexpected items entry in two rows: amount, description and Add (typed each time), then type and
+     category (kept between entries). Tab order stays amount → description, as on desktop. */
+  .quick-entry {
+    flex-wrap: wrap !important;
+  }
+  .quick-entry > .qe-amount {
+    order: 1;
+    flex: 0 0 6.5rem;
+    width: auto !important;
+  }
+  .quick-entry > .qe-description {
+    order: 2;
+    /* Small enough that amount, description and Add share a row down to 320px screens, while
+       type (~150px) can't also squeeze onto it. */
+    flex: 1 1 6rem !important;
+    min-width: 0;
+  }
+  .quick-entry > .qe-add {
+    order: 3;
+    flex: 0 0 auto;
+  }
+  .quick-entry > .qe-kind {
+    order: 4;
+    flex: 0 0 auto;
+  }
+  /* A little less padding leaves the category room for names like "Miscellaneous". */
+  .quick-entry > .qe-kind .mantine-SegmentedControl-label {
+    padding-inline: 8px;
+  }
+  .quick-entry > .qe-category {
+    order: 5;
+    flex: 1 1 8rem !important;
+    min-width: 0;
+  }
+  /* As tall as the Expense/Income toggle beside it (44px labels + its 4px inner padding). */
+  .quick-entry > .qe-category .mantine-Input-wrapper {
+    --input-height: 3.25rem !important;
+  }
+}
+
+/* A short colored bar before a list's heading (e.g. Unexpected expenses / income), like a legend swatch. */
+.list-marker {
+  flex: 0 0 auto;
+  width: 4px;
+  height: 1.1rem;
+  border-radius: 2px;
+}
+
+/* Budget vs. actual on phones: Income and Expenses each get a block (a tone step, no border). */
+.budget-block {
+  background: var(--surface-container-highest);
+  border-radius: var(--mantine-radius-md);
+  padding: 0.75rem;
+}
