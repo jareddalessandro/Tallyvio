@@ -43,7 +43,7 @@ import {
 } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { api } from '../api';
@@ -52,6 +52,7 @@ import {
   Delta,
   Editable,
   EmptyState,
+  Figure,
   PageHeader,
   RowActions,
   SectionCard,
@@ -882,18 +883,6 @@ const PHONE_SORTS = [
   { value: 'return-asc', label: 'Worst return' },
 ];
 
-/** A labeled figure in an open holding's details. */
-function Figure({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div>
-      <Text className="label-sm">{label}</Text>
-      <Text component="div" size="sm" className="num" fw={500} mt={2}>
-        {children}
-      </Text>
-    </div>
-  );
-}
-
 /** Gain with its return in parentheses, or a dash without a cost. */
 const gainDelta = (gain: number | null, cost: number | null, size: 'xs' | 'sm' = 'sm') => {
   const ret = returnOf(gain, cost);
@@ -1086,7 +1075,7 @@ function HoldingsList({
       })}
 
       {/* One line per figure, label left and amount right, so the long amounts never wrap. */}
-      <Stack gap={6} className="holding-total" mt="xs">
+      <Stack gap={6} className="list-total" mt="xs">
         <Group justify="space-between" wrap="nowrap">
           <Text fw={700}>Total</Text>
           <Text fw={700} className="num">

@@ -129,6 +129,19 @@ export function StatCard({
   );
 }
 
+/** A small labeled figure (label-sm label over a 14px value), for the details of a row opened on a phone
+    and similar 2-column grids. */
+export function Figure({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <Text className="label-sm">{label}</Text>
+      <Text component="div" size="sm" className="num" fw={500} mt={2}>
+        {children}
+      </Text>
+    </div>
+  );
+}
+
 /** The one headline number on a page, at display size on the primary gradient wash. */
 export function HeroStat({ label, value, footer }: { label: string; value: ReactNode; footer?: ReactNode }) {
   return (

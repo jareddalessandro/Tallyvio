@@ -601,7 +601,7 @@ body {
   border-radius: var(--mantine-radius-sm);
   padding: 0.4rem 0.25rem 0.4rem 0.6rem;
 }
-.holding-total {
+.list-total {
   background-color: var(--surface-container-highest);
   border-radius: var(--mantine-radius-md);
   padding: 0.6rem 0.5rem;
