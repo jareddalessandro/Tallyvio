@@ -1,6 +1,7 @@
 import os
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings
 from sqlalchemy.engine import make_url
 
@@ -44,12 +45,21 @@ class Settings(BaseSettings):
     price_refresh_hour: int = 17
     price_refresh_minute: int = 30
     price_refresh_tz: str = "America/New_York"
+    # Extra refreshes while the US market is open (weekdays 9:30 AM-4:00 PM Eastern), every this many
+    # minutes; 0 turns them off. The evening refresh above still records each day's close.
+    price_intraday_minutes: int = Field(15, ge=0, le=240)
     # Turned off by tests so they never hit the network or start background jobs.
     enable_scheduler: bool = True
     # Per-visitor request limits (app.ratelimit). Tests turn them off.
     rate_limit_enabled: bool = True
     # The interactive API docs at /docs. Production turns them off (API_DOCS=false).
     api_docs: bool = True
+
+    @property
+    def intraday_refresh_minutes(self) -> int:
+        """The intraday refresh interval in effect: 0 for Tiingo, whose daily endpoint only has end-of-day
+        prices, so refreshing during the day would only spend its request quota."""
+        return 0 if self.price_provider == "tiingo" else self.price_intraday_minutes
 
     @property
     def secure_cookies(self) -> bool:

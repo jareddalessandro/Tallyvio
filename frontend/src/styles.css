@@ -556,11 +556,81 @@ body {
     justify-content: center;
     align-items: center;
   }
-  /* Badge text was 9-10px at the small sizes; 11px is the smallest readable size. */
-  .mantine-Badge-root[data-size='xs'],
-  .mantine-Badge-root[data-size='sm'] {
-    --badge-fz: 0.6875rem !important;
-    --badge-height: 1.25rem !important;
+}
+
+/* ---------- Smallest text ----------
+   Nothing goes below 11px, and 11px only for uppercase, tracked text (label-sm, badges), which reads
+   larger than its size. Mixed-case text is at least 12px (e.g. CategoryBadge sets fz="xs"). Mantine's
+   small badges were 9-10px, on every screen size. */
+.mantine-Badge-root[data-size='xs'],
+.mantine-Badge-root[data-size='sm'] {
+  --badge-fz: 0.6875rem !important;
+  --badge-height: 1.25rem !important;
+}
+
+/* Expandable lists on phones (Investments holdings and ledger). Rows are set apart by tone and
+   spacing, never lines; an open row keeps its tone so its details read as part of it. */
+.expand-row {
+  border-radius: var(--mantine-radius-md);
+}
+.expand-row[data-open] {
+  background-color: var(--surface-container-highest);
+}
+.expand-row-head {
+  display: block;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.6rem 0.5rem;
+  border-radius: var(--mantine-radius-md);
+}
+.expand-row:not([data-open]) .expand-row-head:hover {
+  background-color: var(--surface-container-highest);
+}
+.expand-chevron {
+  color: var(--mantine-color-dimmed);
+  transition: transform 150ms ease;
+}
+.expand-row[data-open] .expand-chevron {
+  transform: rotate(180deg);
+}
+.expand-details {
+  padding: 0.25rem 0.5rem 0.75rem;
+}
+.holding-lot {
+  background-color: var(--surface-container-high);
+  border-radius: var(--mantine-radius-sm);
+  padding: 0.4rem 0.25rem 0.4rem 0.6rem;
+}
+.holding-total {
+  background-color: var(--surface-container-highest);
+  border-radius: var(--mantine-radius-md);
+  padding: 0.6rem 0.5rem;
+}
+
+/* Balance Sheet on phones: the balance column sizes to its input, leaving the account names room, and
+   names break between words, not inside them (only an overlong single word may still break). */
+@media (max-width: 36em) {
+  .balance-col {
+    width: auto !important;
+  }
+  .mantine-Table-td .account-name {
+    overflow-wrap: break-word;
+  }
+  /* The "Investments" link badge in normal case: uppercase and tracked, it didn't fit the column. */
+  .mantine-Badge-root.sync-badge {
+    text-transform: none;
+    letter-spacing: 0;
+    --badge-fz: 0.75rem !important;
+  }
+  /* Less padding so "Enter balance" fits at 16px. */
+  .balance-input input {
+    padding-inline: 8px;
+  }
+}
+/* Balance inputs match the read-only balances' 14px on desktop; phones keep the 16px input rule. */
+@media (min-width: 36.0625em) {
+  .balance-input input {
+    font-size: var(--mantine-font-size-sm);
   }
 }
 

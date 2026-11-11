@@ -2,6 +2,7 @@ import { AreaChart, LineChart } from '@mantine/charts';
 import {
   ActionIcon,
   Badge,
+  Box,
   Button,
   Group,
   Menu,
@@ -168,16 +169,22 @@ export default function BalanceSheetPage() {
     return (
       <Table.Tr key={r.account.id} opacity={r.account.is_archived ? 0.6 : 1}>
         <Table.Td>
-          <Group gap={6} wrap="nowrap">
-            <Text size="sm" fw={500}>
-              {r.account.name}
-            </Text>
+          <Text size="md" fw={600} className="account-name">
+            {r.account.name}
+          </Text>
+          <Text size="xs" c="dimmed">
+            {subtypeLabel(r.account.subtype)}
+          </Text>
+          {/* The Investments link and Archived get their own row under the name and type, on every screen,
+              so they never squeeze the name or sit beside it on some rows and below it on others. */}
+          {(r.account.sync_from_holdings || r.account.is_archived) && (
+          <Group gap={6} wrap="wrap" mt={4} style={{ rowGap: 4 }}>
             {r.account.sync_from_holdings && (
               <Tooltip label="Value comes from this account's holdings on the Investments tab. Click to see them.">
                 {/* The link wraps the badge so its 44px tap area (hit-44) isn't clipped by the badge. */}
                 <Link to={`/investments?account=${r.account.id}`} className="hit-44" style={{ display: 'inline-flex' }}>
-                  <Badge size="xs" variant="light" leftSection={<IconLink size={10} />} style={{ cursor: 'pointer' }}>
-                    From Investments
+                  <Badge size="xs" variant="light" leftSection={<IconLink size={10} />} style={{ cursor: 'pointer' }} className="sync-badge">
+                    <span className="hide-xs">From </span>Investments
                   </Badge>
                 </Link>
               </Tooltip>
@@ -188,9 +195,7 @@ export default function BalanceSheetPage() {
               </Badge>
             )}
           </Group>
-          <Text size="xs" c="dimmed">
-            {subtypeLabel(r.account.subtype)}
-          </Text>
+          )}
           {change != null && (
             <div className="show-xs">
               <Delta value={change} goodWhen={kind === 'asset' ? 'up' : 'down'} size="xs" />
@@ -205,7 +210,7 @@ export default function BalanceSheetPage() {
           ) : (
             <NumberInput
               size="xs"
-              w={{ base: 120, xs: 150 }}
+              w={{ base: 124, xs: 150 }}
               ml="auto"
               prefix="$"
               decimalScale={2}
@@ -216,9 +221,10 @@ export default function BalanceSheetPage() {
               value={value}
               onChange={(v) => setDraft((d) => ({ ...d, [r.account.id]: v === '' ? '' : Number(v) }))}
               aria-label={`${r.account.name} balance`}
-              // Compact height, but the same text size and weight as the read-only (synced) balances.
-              styles={{ input: { textAlign: 'right', fontSize: 'var(--mantine-font-size-sm)', fontWeight: 500 } }}
-              className={unentered.has(r.account.id) ? 'num needs-entry' : 'num'}
+              // Compact height, but the same weight as the read-only (synced) balances; the size is in
+              // .balance-input (14px on desktop, 16px on phones so iOS doesn't zoom in on focus).
+              styles={{ input: { textAlign: 'right', fontWeight: 500 } }}
+              className={unentered.has(r.account.id) ? 'num balance-input needs-entry' : 'num balance-input'}
             />
           )}
         </Table.Td>
@@ -277,9 +283,27 @@ export default function BalanceSheetPage() {
         : [{ key: 'all', label: null, rows: group }];
     return (
       <>
+        {/* Space between the two sections, so Liabilities doesn't read as part of the assets. */}
+        {kind === 'liability' && (
+          <Table.Tr aria-hidden>
+            <Table.Td colSpan={4} h={20} p={0} />
+          </Table.Tr>
+        )}
         <Table.Tr>
-          <Table.Th colSpan={4} bg="var(--mantine-color-default-hover)">
-            {kind === 'asset' ? 'Assets' : 'Liabilities'}
+          {/* A real heading (not the small table-header style), with the chart's assets / liabilities
+              color as a marker; the word says which it is. */}
+          <Table.Th colSpan={4} bg="var(--mantine-color-default-hover)" py="sm">
+            <Group gap={8} wrap="nowrap">
+              <Box
+                w={4}
+                h={18}
+                style={{ borderRadius: 2, background: kind === 'asset' ? 'var(--series-1)' : 'var(--series-2)' }}
+                aria-hidden
+              />
+              <Text className="headline" fw={700} size="md" tt="none" lts={0} c="var(--mantine-color-text)">
+                {kind === 'asset' ? 'Assets' : 'Liabilities'}
+              </Text>
+            </Group>
           </Table.Th>
         </Table.Tr>
         {subgroups.map((g) => (
@@ -434,7 +458,8 @@ export default function BalanceSheetPage() {
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th>Account</Table.Th>
-                    <Table.Th ta="right" w={170}>
+                    {/* Fixed on desktop; on phones it sizes to the input so the names keep their room. */}
+                    <Table.Th ta="right" w={170} className="balance-col">
                       {monthLabel(month)}
                     </Table.Th>
                     <Table.Th ta="right" w={190} className="hide-xs">

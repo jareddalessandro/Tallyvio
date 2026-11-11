@@ -315,6 +315,8 @@ export interface PortfolioSummary {
   total_gain: number | null;
   day_change: number;
   last_refresh: RefreshRun | null;
+  /** Minutes between refreshes while the market is open; 0 when prices refresh only in the evening. */
+  intraday_minutes: number;
 }
 
 export interface PortfolioPoint {

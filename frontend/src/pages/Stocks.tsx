@@ -6,6 +6,7 @@ import {
   Badge,
   Box,
   Button,
+  Collapse,
   Grid,
   Group,
   Modal,
@@ -22,9 +23,11 @@ import {
   Textarea,
   TextInput,
   Tooltip,
+  UnstyledButton,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
+import { useMediaQuery } from '@mantine/hooks';
 import {
   IconAlertTriangle,
   IconArrowsExchange,
@@ -40,7 +43,7 @@ import {
 } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { api } from '../api';
@@ -100,6 +103,8 @@ function performance(history: PortfolioPoint[], range: Range) {
 type Editing = { holding: Holding | null } | null;
 
 const UNASSIGNED = 'unassigned';
+/** How often an open Investments page re-reads prices. */
+const LIVE_MS = 5 * 60_000;
 
 type SortKey = 'ticker' | 'value' | 'allocation' | 'gain' | 'return';
 type Sort = { key: SortKey; dir: SortDir };
@@ -131,8 +136,10 @@ export default function StocksPage() {
   const [trading, setTrading] = useState<Holding | null>(null);
   const [sort, setSort] = useState<Sort>(loadSort);
 
-  const { data: holdings = [], isLoading } = useQuery({ queryKey: ['holdings'], queryFn: api.holdings });
-  const { data: summary } = useQuery({ queryKey: ['portfolio-summary'], queryFn: api.portfolioSummary });
+  // Prices refresh on the server during market hours, so an open page checks back every few minutes
+  // (only while it's visible; TanStack skips hidden tabs).
+  const { data: holdings = [], isLoading } = useQuery({ queryKey: ['holdings'], queryFn: api.holdings, refetchInterval: LIVE_MS });
+  const { data: summary } = useQuery({ queryKey: ['portfolio-summary'], queryFn: api.portfolioSummary, refetchInterval: LIVE_MS });
   const { data: accounts = [] } = useQuery({ queryKey: ['accounts'], queryFn: () => api.accounts() });
   const { data: ledger = [] } = useQuery({ queryKey: ['investment-transactions'], queryFn: api.investmentTransactions });
   // ?account=<id> (or 'unassigned') narrows the holdings table to one account. Set by the selector above
@@ -157,6 +164,7 @@ export default function StocksPage() {
   const { data: history = [] } = useQuery({
     queryKey: ['portfolio-history', range],
     queryFn: () => api.portfolioHistory(rangeDays(range)),
+    refetchInterval: LIVE_MS,
   });
   // The YTD card always needs this range; it shares the cache with the chart when YTD is selected.
   const { data: ytdHistory = [] } = useQuery({
@@ -165,6 +173,15 @@ export default function StocksPage() {
   });
   const refresh = useAppMutation(() => api.refreshPrices(), 'Prices refreshed');
   const remove = useAppMutation((id: number) => api.deleteHolding(id), 'Holding deleted');
+  const deleteHolding = (h: Holding) =>
+    confirmDelete(
+      h.asset_type === 'cash'
+        ? `cash${h.account_name ? ` in ${h.account_name}` : ''}`
+        : `${h.ticker} holding${h.account_name ? ` in ${h.account_name}` : ''}`,
+      () => remove.mutate(h.id),
+    );
+  // Phones get the holdings as an expandable list instead of the table.
+  const phone = useMediaQuery('(max-width: 36em)') ?? false;
 
   const total = summary?.total_value ?? 0;
   const allocation = (Object.keys(ASSET_LABELS) as AssetType[])
@@ -211,7 +228,11 @@ export default function StocksPage() {
     <>
       <PageHeader
         title="Investments"
-        description="Stocks, ETFs, crypto, and cash held in your accounts. Prices refresh automatically every evening."
+        description={`Stocks, ETFs, crypto, and cash held in your accounts. ${
+          summary?.intraday_minutes
+            ? `Prices refresh every ${summary.intraday_minutes} minutes while the market is open, and again each evening.`
+            : 'Prices refresh automatically every evening.'
+        }`}
         actions={
           <>
             {run?.finished_at && (
@@ -304,15 +325,36 @@ export default function StocksPage() {
           title="Holdings"
           actions={
             holdings.length > 0 && (
-              <Select
-                w={{ base: '100%', xs: 220 }}
-                aria-label="Show holdings for"
-                data={accountOptions}
-                value={accountParam ?? ''}
-                onChange={(v) => setParams(v ? { account: v } : {})}
-                allowDeselect={false}
-                comboboxProps={{ withinPortal: true }}
-              />
+              // Phones: the account and a sort dropdown share a row (the list has no sortable headers).
+              <Group gap="xs" wrap="nowrap" w={{ base: '100%', xs: 'auto' }}>
+                <Select
+                  w={{ base: 'auto', xs: 220 }}
+                  style={phone ? { flex: 1, minWidth: 0 } : undefined}
+                  aria-label="Show holdings for"
+                  data={accountOptions}
+                  value={accountParam ?? ''}
+                  onChange={(v) => setParams(v ? { account: v } : {})}
+                  allowDeselect={false}
+                  comboboxProps={{ withinPortal: true }}
+                />
+                {phone && (
+                  <Select
+                    w={160}
+                    aria-label="Sort holdings"
+                    data={PHONE_SORTS}
+                    // Allocation orders the same as value.
+                    value={`${sort.key === 'allocation' ? 'value' : sort.key}-${sort.dir}`}
+                    onChange={(v) => {
+                      if (!v) return;
+                      const [key, dir] = v.split('-') as [SortKey, SortDir];
+                      setSort({ key, dir });
+                      saveSort({ key, dir });
+                    }}
+                    allowDeselect={false}
+                    comboboxProps={{ withinPortal: true }}
+                  />
+                )}
+              </Group>
             )
           }
         >
@@ -326,6 +368,16 @@ export default function StocksPage() {
                   Add holding
                 </Button>
               }
+            />
+          ) : phone ? (
+            <HoldingsList
+              holdings={shown}
+              sort={sort}
+              total={holdingsTotal}
+              totals={totals}
+              onEdit={(h) => setEditing({ holding: h })}
+              onTrade={setTrading}
+              onDelete={deleteHolding}
             />
           ) : (
             <Table.ScrollContainer minWidth={990} className="phone-fit">
@@ -359,14 +411,7 @@ export default function StocksPage() {
                   total={holdingsTotal}
                   onEdit={(h) => setEditing({ holding: h })}
                   onTrade={setTrading}
-                  onDelete={(h) =>
-                    confirmDelete(
-                      h.asset_type === 'cash'
-                        ? `cash${h.account_name ? ` in ${h.account_name}` : ''}`
-                        : `${h.ticker} holding${h.account_name ? ` in ${h.account_name}` : ''}`,
-                      () => remove.mutate(h.id),
-                    )
-                  }
+                  onDelete={deleteHolding}
                 />
                 <Table.Tfoot>
                   <Table.Tr>
@@ -527,9 +572,15 @@ interface Position {
  * base, as in the chart's %. Null when there's no base to divide by.
  */
 const dayPercent = (value: number | null | undefined, change: number | null | undefined) => {
+  const pct = dayRate(value, change);
+  return pct == null ? null : `(${signedPercent(pct)}) today`;
+};
+
+/** The day's change as a share of yesterday's value; null without a base. */
+const dayRate = (value: number | null | undefined, change: number | null | undefined) => {
   if (value == null || change == null) return null;
   const base = value - change;
-  return base > 0 ? `(${signedPercent(change / base)}) today` : null;
+  return base > 0 ? change / base : null;
 };
 
 /** Gain as a share of what was paid; null without a cost (cash, or none entered). */
@@ -819,6 +870,250 @@ function HoldingsBody({
   );
 }
 
+/** Sort choices for phones, where the table's sortable headers aren't shown. */
+const PHONE_SORTS = [
+  { value: 'ticker-asc', label: 'Ticker A–Z' },
+  { value: 'ticker-desc', label: 'Ticker Z–A' },
+  { value: 'value-desc', label: 'Largest value' },
+  { value: 'value-asc', label: 'Smallest value' },
+  { value: 'gain-desc', label: 'Largest gain' },
+  { value: 'gain-asc', label: 'Largest loss' },
+  { value: 'return-desc', label: 'Best return' },
+  { value: 'return-asc', label: 'Worst return' },
+];
+
+/** A labeled figure in an open holding's details. */
+function Figure({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <Text className="label-sm">{label}</Text>
+      <Text component="div" size="sm" className="num" fw={500} mt={2}>
+        {children}
+      </Text>
+    </div>
+  );
+}
+
+/** Gain with its return in parentheses, or a dash without a cost. */
+const gainDelta = (gain: number | null, cost: number | null, size: 'xs' | 'sm' = 'sm') => {
+  const ret = returnOf(gain, cost);
+  return gain == null ? '—' : <Delta value={gain} size={size} suffix={ret != null ? `(${signedPercent(ret)})` : undefined} />;
+};
+
+/**
+ * Phones: holdings as a list, like a brokerage app's. A row shows the ticker and price with today's move;
+ * tapping it opens the details (value, shares, cost, today's and total return) and the actions. A ticker
+ * held in several accounts lists each account inside, each with its own actions.
+ */
+function HoldingsList({
+  holdings,
+  sort,
+  total,
+  totals,
+  onEdit,
+  onTrade,
+  onDelete,
+}: {
+  holdings: Holding[];
+  sort: Sort;
+  total: number;
+  totals: { cost: number | null | undefined; value: number | null | undefined; day: number | null | undefined; gain: number | null | undefined };
+  onEdit: (h: Holding) => void;
+  onTrade: (h: Holding) => void;
+  onDelete: (h: Holding) => void;
+}) {
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const toggle = (key: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  const tradeLabel = (h: Holding) => (h.asset_type === 'cash' ? 'Deposit or withdraw' : 'Buy or sell');
+
+  return (
+    <Stack gap={2}>
+      {sortPositions(groupPositions(holdings), sort).map((p) => {
+        const cash = p.asset_type === 'cash';
+        const isOpen = open.has(p.key);
+        const single = p.lots.length === 1 ? p.lots[0] : null;
+        const share = p.market_value != null && total > 0 ? p.market_value / total : null;
+        const today = dayRate(p.market_value, p.day_change);
+        const units = p.asset_type === 'crypto' ? 'Quantity' : 'Shares';
+        const subline = cash
+          ? single?.account_name ?? (single ? 'Unassigned' : `${p.lots.length} accounts`)
+          : `${quantity(p.quantity)} ${p.asset_type === 'crypto' ? 'units' : 'shares'}${single ? '' : ` · ${p.lots.length} accounts`}`;
+        const detailsId = `holding-${p.key}`;
+        return (
+          <div key={p.key} className="expand-row" data-open={isOpen || undefined}>
+            <UnstyledButton
+              className="expand-row-head"
+              onClick={() => toggle(p.key)}
+              aria-expanded={isOpen}
+              aria-controls={detailsId}
+            >
+              <Group justify="space-between" wrap="nowrap" gap="sm">
+                <div style={{ minWidth: 0 }}>
+                  <TickerLabel ticker={p.ticker} asset_type={p.asset_type} />
+                  <Text size="xs" c="dimmed" className="num" truncate>
+                    {subline}
+                  </Text>
+                </div>
+                <Group gap={6} wrap="nowrap">
+                  <Stack gap={0} align="flex-end">
+                    {/* Cash has no price; its amount is the figure that matters. */}
+                    <Text size="sm" fw={600} className="num">
+                      {money(cash ? p.market_value : p.price)}
+                    </Text>
+                    {/* Delta's text takes its parent's size, so the wrapper sets it. */}
+                    {!cash && today != null && (
+                      <Text component="div" size="xs">
+                        <Delta value={today} size="xs" format={signedPercent} />
+                      </Text>
+                    )}
+                  </Stack>
+                  <IconChevronDown size={16} className="expand-chevron" aria-hidden />
+                </Group>
+              </Group>
+            </UnstyledButton>
+            <Collapse in={isOpen}>
+              <div className="expand-details" id={detailsId}>
+                <SimpleGrid cols={2} spacing="sm" verticalSpacing="sm">
+                  <Figure label="Market value">{money(p.market_value)}</Figure>
+                  <Figure label="Allocation">{share == null ? '—' : percent(share)}</Figure>
+                  {!cash && (
+                    <>
+                      <Figure label={units}>{quantity(p.quantity)}</Figure>
+                      <Figure label="Avg cost">
+                        {money(p.cost_per_unit)}
+                        {p.cost_basis != null && p.lotsWithCost < p.lots.length && (
+                          <Text size="xs" c="dimmed" fw={400}>
+                            {p.lotsWithCost} of {p.lots.length} accounts
+                          </Text>
+                        )}
+                      </Figure>
+                      <Figure label="Today">{p.day_change == null ? '—' : <Delta value={p.day_change} suffix={today != null ? `(${signedPercent(today)})` : undefined} />}</Figure>
+                      <Figure label="Total return">{gainDelta(p.gain, p.cost_basis)}</Figure>
+                      <Figure label="Cost basis">{money(p.cost_basis)}</Figure>
+                      <Figure label="Price as of">{p.price_date ? dateLabel(p.price_date) : '—'}</Figure>
+                    </>
+                  )}
+                </SimpleGrid>
+
+                {single ? (
+                  <>
+                    <Text size="sm" mt="sm">
+                      <Text span c="dimmed" size="sm">
+                        Account:{' '}
+                      </Text>
+                      {single.account_name ?? 'Unassigned'}
+                    </Text>
+                    {single.notes && (
+                      <Text size="xs" c="dimmed" mt={2}>
+                        {single.notes}
+                      </Text>
+                    )}
+                    {/* The trade is the common action, so it gets the wide button; edit and delete are icons. */}
+                    <Editable>
+                      <Group gap="xs" mt="sm" wrap="nowrap">
+                        <Button
+                          variant="default"
+                          leftSection={<IconArrowsExchange size={16} />}
+                          onClick={() => onTrade(single)}
+                          style={{ flex: 1 }}
+                        >
+                          {tradeLabel(single)}
+                        </Button>
+                        <Tooltip label="Edit (fix the shares or average cost)">
+                          <ActionIcon variant="default" aria-label="Edit" onClick={() => onEdit(single)}>
+                            <IconPencil size={16} />
+                          </ActionIcon>
+                        </Tooltip>
+                        <ActionIcon variant="default" aria-label="Delete" onClick={() => onDelete(single)}>
+                          <IconTrash size={16} color="var(--delta-down)" />
+                        </ActionIcon>
+                      </Group>
+                    </Editable>
+                  </>
+                ) : (
+                  <>
+                    <Text className="label-sm" mt="md" mb={4}>
+                      By account
+                    </Text>
+                    <Stack gap={4}>
+                      {p.lots.map((h) => (
+                        // Name, shares and gain stack on the left so each gets a full line; the value and
+                        // the actions menu stay on the right.
+                        <Group key={h.id} className="holding-lot" justify="space-between" wrap="nowrap" gap="xs" align="flex-start">
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <Text size="sm" fw={500}>
+                              {h.account_name ?? 'Unassigned'}
+                            </Text>
+                            <Text size="xs" c="dimmed" className="num">
+                              {cash
+                                ? h.notes ?? 'Cash'
+                                : `${quantity(h.quantity)} ${units.toLowerCase()} @ ${money(h.cost_per_unit)} avg`}
+                            </Text>
+                            {!cash && h.gain != null && (
+                              <Text component="div" size="xs">
+                                {gainDelta(h.gain, h.cost_basis, 'xs')}
+                              </Text>
+                            )}
+                          </div>
+                          <Group gap={0} wrap="nowrap">
+                            <Text size="sm" fw={500} className="num">
+                              {money(h.market_value)}
+                            </Text>
+                            <RowActions
+                              label={`Actions for ${cash ? 'cash' : h.ticker} in ${h.account_name ?? 'Unassigned'}`}
+                              actions={[
+                                { label: tradeLabel(h), icon: <IconArrowsExchange size={16} />, onClick: () => onTrade(h) },
+                                { label: 'Edit', icon: <IconPencil size={16} />, onClick: () => onEdit(h) },
+                                { label: 'Delete', icon: <IconTrash size={16} />, color: 'red', onClick: () => onDelete(h) },
+                              ]}
+                            />
+                          </Group>
+                        </Group>
+                      ))}
+                    </Stack>
+                  </>
+                )}
+              </div>
+            </Collapse>
+          </div>
+        );
+      })}
+
+      {/* One line per figure, label left and amount right, so the long amounts never wrap. */}
+      <Stack gap={6} className="holding-total" mt="xs">
+        <Group justify="space-between" wrap="nowrap">
+          <Text fw={700}>Total</Text>
+          <Text fw={700} className="num">
+            {money(totals.value)}
+          </Text>
+        </Group>
+        <Group justify="space-between" wrap="nowrap">
+          <Text size="sm" c="dimmed">
+            Today
+          </Text>
+          <Text component="div" size="sm">
+            {totals.day == null ? '—' : <Delta value={totals.day} suffix={dayPercent(totals.value, totals.day)?.replace(' today', '')} />}
+          </Text>
+        </Group>
+        <Group justify="space-between" wrap="nowrap">
+          <Text size="sm" c="dimmed">
+            Total return
+          </Text>
+          <Text component="div" size="sm">
+            {gainDelta(totals.gain ?? null, totals.cost ?? null)}
+          </Text>
+        </Group>
+      </Stack>
+    </Stack>
+  );
+}
+
 /**
  * Dot color per ledger entry type. Buy and sell match the paired --series-1/--series-2; the dot always
  * sits beside the type's name, so color never carries it alone.
@@ -858,6 +1153,17 @@ function Ledger({ entries, filtered }: { entries: InvestmentTransaction[]; filte
   const shown = entries.slice(first, first + LEDGER_PAGE_SIZE);
   const sales = entries.filter((t) => t.realized_gain != null);
   const realized = sales.reduce((s, t) => s + (t.realized_gain ?? 0), 0);
+  const phone = useMediaQuery('(max-width: 36em)') ?? false;
+  const [open, setOpen] = useState<Set<number>>(new Set());
+  const toggle = (id: number) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const confirmRemove = (t: InvestmentTransaction) =>
+    confirmDelete('this ledger entry', () => remove.mutate(t.id), 'This removes the record only. Your holdings and cash stay as they are.');
 
   if (entries.length === 0) {
     return (
@@ -875,6 +1181,72 @@ function Ledger({ entries, filtered }: { entries: InvestmentTransaction[]; filte
 
   return (
     <>
+      {phone ? (
+        // Phones: what and how much on the row (holding, action, amount, date); tap for the rest.
+        <Stack gap={2}>
+          {shown.map((t) => {
+            const isOpen = open.has(t.id);
+            return (
+              <div key={t.id} className="expand-row" data-open={isOpen || undefined}>
+                <UnstyledButton
+                  className="expand-row-head"
+                  onClick={() => toggle(t.id)}
+                  aria-expanded={isOpen}
+                  aria-controls={`ledger-${t.id}`}
+                >
+                  <Group justify="space-between" wrap="nowrap" gap="sm">
+                    <div style={{ minWidth: 0 }}>
+                      <Group gap={8} wrap="nowrap">
+                        <TickerLabel ticker={t.ticker} asset_type={t.asset_type} />
+                        <LedgerKindBadge kind={t.kind} />
+                      </Group>
+                      <Text size="xs" c="dimmed" className="num" mt={2}>
+                        {dateLabel(t.date)}
+                      </Text>
+                    </div>
+                    <Group gap={6} wrap="nowrap">
+                      <Text size="sm" fw={600} className="num">
+                        {t.amount != null ? money(t.amount) : '—'}
+                      </Text>
+                      <IconChevronDown size={16} className="expand-chevron" aria-hidden />
+                    </Group>
+                  </Group>
+                </UnstyledButton>
+                <Collapse in={isOpen}>
+                  <div className="expand-details" id={`ledger-${t.id}`}>
+                    <SimpleGrid cols={2} spacing="sm" verticalSpacing="sm">
+                      <Figure label="Account">{t.account_name ?? 'No account'}</Figure>
+                      {t.asset_type !== 'cash' && (
+                        <>
+                          <Figure label={t.asset_type === 'crypto' ? 'Quantity' : 'Shares'}>{quantity(t.quantity)}</Figure>
+                          <Figure label="Price">{t.price != null ? money(t.price) : '—'}</Figure>
+                        </>
+                      )}
+                      <Figure label="Cash">{t.cash_change != null ? cashLabel(t.cash_change) : '—'}</Figure>
+                      {t.realized_gain != null && (
+                        <Figure label="Realized gain">
+                          <Delta value={t.realized_gain} />
+                        </Figure>
+                      )}
+                    </SimpleGrid>
+                    <Editable>
+                      <Button
+                        variant="default"
+                        fullWidth
+                        mt="sm"
+                        leftSection={<IconTrash size={16} color="var(--delta-down)" />}
+                        onClick={() => confirmRemove(t)}
+                      >
+                        Delete entry
+                      </Button>
+                    </Editable>
+                  </div>
+                </Collapse>
+              </div>
+            );
+          })}
+        </Stack>
+      ) : (
       <Table.ScrollContainer minWidth={900} className="phone-fit">
         <Table highlightOnHover verticalSpacing="xs">
           <Table.Thead>
@@ -965,12 +1337,7 @@ function Ledger({ entries, filtered }: { entries: InvestmentTransaction[]; filte
                         label: 'Delete',
                         icon: <IconTrash size={16} />,
                         color: 'red',
-                        onClick: () =>
-                          confirmDelete(
-                            'this ledger entry',
-                            () => remove.mutate(t.id),
-                            'This removes the record only. Your holdings and cash stay as they are.',
-                          ),
+                        onClick: () => confirmRemove(t),
                       },
                     ]}
                   />
@@ -980,6 +1347,7 @@ function Ledger({ entries, filtered }: { entries: InvestmentTransaction[]; filte
           </Table.Tbody>
         </Table>
       </Table.ScrollContainer>
+      )}
       <Group justify="space-between" mt="xs" gap="xs">
         {sales.length > 0 ? (
           <Group gap={6}>
@@ -995,11 +1363,21 @@ function Ledger({ entries, filtered }: { entries: InvestmentTransaction[]; filte
           <span />
         )}
         {pages > 1 && (
-          <Group gap="xs">
+          <Group gap="xs" wrap="nowrap">
             <Text size="xs" c="dimmed" className="num">
               {first + 1}–{first + shown.length} of {entries.length}
             </Text>
-            <Pagination size="sm" total={pages} value={current} onChange={setPage} />
+            {/* Phones: just the arrows, so the control stays on one row. */}
+            {phone ? (
+              <Pagination.Root size="sm" total={pages} value={current} onChange={setPage}>
+                <Group gap="xs" wrap="nowrap">
+                  <Pagination.Previous aria-label="Previous page" />
+                  <Pagination.Next aria-label="Next page" />
+                </Group>
+              </Pagination.Root>
+            ) : (
+              <Pagination size="sm" total={pages} value={current} onChange={setPage} />
+            )}
           </Group>
         )}
       </Group>

@@ -62,6 +62,7 @@ services:
       PRICE_REFRESH_HOUR: ${PRICE_REFRESH_HOUR:-17}
       PRICE_REFRESH_MINUTE: ${PRICE_REFRESH_MINUTE:-30}
       PRICE_REFRESH_TZ: ${PRICE_REFRESH_TZ:-America/New_York}
+      PRICE_INTRADAY_MINUTES: ${PRICE_INTRADAY_MINUTES:-15}
       TZ: ${TZ:-America/Phoenix}
       API_DOCS: "false"
       HOME: /tmp
