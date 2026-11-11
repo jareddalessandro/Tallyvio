@@ -80,18 +80,21 @@ export function Delta({
   }
   const good = goodWhen === 'up' ? value > 0 : value < 0;
   const Icon = value > 0 ? IconArrowUpRight : IconArrowDownRight;
+  // When it wraps (narrow cards on phones), "vs. last month" moves to the next line whole instead of
+  // leaving "month" on its own, and the arrow stays beside the first line.
+  const tail = suffix?.replace(/vs\. .*/, (phrase) => phrase.replace(/ /g, ' '));
   return (
-    <Group gap={2} wrap="nowrap" className={good ? 'delta-up' : 'delta-down'}>
-      <Icon size={14} stroke={2} aria-hidden />
+    <Group gap={2} wrap="nowrap" align="flex-start" className={good ? 'delta-up' : 'delta-down'}>
+      <Icon size={14} stroke={2} aria-hidden style={{ flexShrink: 0, marginTop: 'calc((1lh - 14px) / 2)' }} />
       <Text size={size} inherit className="num" fw={500}>
         {format(value)}
-        {suffix ? ` ${suffix}` : ''}
+        {tail ? ` ${tail}` : ''}
       </Text>
     </Group>
   );
 }
 
-/** `compact` trims the padding and number size (not the footer, which stays readable), for a row that
+/** `compact` trims the padding and number size (not the footer, which stays 14px), for a row that
     shares its width with other cards. */
 export function StatCard({
   label,
@@ -116,12 +119,26 @@ export function StatCard({
       >
         {value}
       </Text>
+      {/* 14px on every screen: at 12px the colored change amounts were hard to read on phones. */}
       {footer && (
-        <Text component="div" fz={{ base: 'xs', sm: 'sm' }} c="dimmed" mt={compact ? 6 : 8}>
+        <Text component="div" fz="sm" c="dimmed" mt={compact ? 6 : 8}>
           {footer}
         </Text>
       )}
     </Paper>
+  );
+}
+
+/** A small labeled figure (label-sm label over a 14px value), for the details of a row opened on a phone
+    and similar 2-column grids. */
+export function Figure({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <Text className="label-sm">{label}</Text>
+      <Text component="div" size="sm" className="num" fw={500} mt={2}>
+        {children}
+      </Text>
+    </div>
   );
 }
 

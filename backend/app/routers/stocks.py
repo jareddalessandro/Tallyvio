@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models import (
     CASH_TICKER,
     Account,
@@ -383,6 +384,7 @@ def portfolio_summary(ctx: HouseholdDep):
         total_gain=total_gain,
         day_change=day_change,
         last_refresh=_run_out(ctx, latest_run),
+        intraday_minutes=settings.intraday_refresh_minutes,
     )
 
 

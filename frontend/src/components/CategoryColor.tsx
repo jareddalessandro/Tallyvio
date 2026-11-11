@@ -32,7 +32,7 @@ export function CategoryDot({ color, size = 8 }: { color: CategoryColor; size?: 
 /** Neutral badge with a colored dot: text stays in text color, the dot carries the category's color. */
 export function CategoryBadge({ category }: { category: { name: string; color: CategoryColor } }) {
   return (
-    <Badge variant="light" color="gray" fw={500} tt="none" leftSection={<CategoryDot color={category.color} size={7} />}>
+    <Badge variant="light" color="gray" fw={500} tt="none" fz="xs" leftSection={<CategoryDot color={category.color} size={7} />}>
       {category.name}
     </Badge>
   );

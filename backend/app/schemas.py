@@ -440,6 +440,8 @@ class PortfolioSummary(BaseModel):
     total_gain: Num | None
     day_change: Num
     last_refresh: RefreshRunOut | None
+    # Minutes between refreshes while the market is open; 0 when there are none (evening only).
+    intraday_minutes: int
 
 
 class PortfolioPoint(BaseModel):

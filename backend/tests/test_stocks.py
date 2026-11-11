@@ -223,3 +223,14 @@ def test_editing_into_a_duplicate_is_refused(client, fake_prices):
     response = client.put(f"/api/holdings/{msft['id']}", json={"ticker": "AAPL", "asset_type": "stock", "quantity": 1})
     assert response.status_code == 409
     assert {h["ticker"] for h in client.get("/api/holdings").json()} == {"AAPL", "MSFT"}
+
+
+def test_summary_says_how_often_prices_refresh_during_the_day(client, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "price_provider", "yahoo")
+    monkeypatch.setattr(settings, "price_intraday_minutes", 15)
+    assert client.get("/api/portfolio/summary").json()["intraday_minutes"] == 15
+    # Tiingo's daily prices are end of day only, so there are no daytime refreshes to mention.
+    monkeypatch.setattr(settings, "price_provider", "tiingo")
+    assert client.get("/api/portfolio/summary").json()["intraday_minutes"] == 0

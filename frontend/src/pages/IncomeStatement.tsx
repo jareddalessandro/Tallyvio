@@ -51,6 +51,7 @@ import {
   Delta,
   Editable,
   EmptyState,
+  Figure,
   MonthSwitcher,
   PageHeader,
   RowActions,
@@ -758,12 +759,12 @@ function BudgetSummary({ statement: s }: { statement: IncomeStatement }) {
                 <Delta value={diff} goodWhen={r.goodWhen} suffix="vs. budget" />
               </Group>
               <SimpleGrid cols={2} spacing="sm" verticalSpacing="xs">
-                <BudgetFigure label="Budget">{money(r.budget)}</BudgetFigure>
-                <BudgetFigure label="Actual">{money(r.actual)}</BudgetFigure>
-                <BudgetFigure label="Unexpected items">{r.unexpected ? signedMoney(cents(r.unexpected)) : '—'}</BudgetFigure>
-                <BudgetFigure label="Everything else">
+                <Figure label="Budget">{money(r.budget)}</Figure>
+                <Figure label="Actual">{money(r.actual)}</Figure>
+                <Figure label="Unexpected items">{r.unexpected ? signedMoney(cents(r.unexpected)) : '—'}</Figure>
+                <Figure label="Everything else">
                   <Delta value={cents(diff - r.unexpected)} goodWhen={r.goodWhen} />
-                </BudgetFigure>
+                </Figure>
               </SimpleGrid>
             </div>
           );
@@ -819,17 +820,6 @@ function BudgetSummary({ statement: s }: { statement: IncomeStatement }) {
         Everything else is the difference from budget that your unexpected items don&apos;t account for.
       </Text>
     </>
-  );
-}
-
-function BudgetFigure({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div>
-      <Text className="label-sm">{label}</Text>
-      <Text component="div" size="sm" className="num" fw={500} mt={2}>
-        {children}
-      </Text>
-    </div>
   );
 }
 

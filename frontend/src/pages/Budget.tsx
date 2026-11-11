@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   Checkbox,
+  Collapse,
   Grid,
   Group,
   Menu,
@@ -18,9 +19,10 @@ import {
   Textarea,
   TextInput,
   Tooltip,
+  UnstyledButton,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { randomId } from '@mantine/hooks';
+import { randomId, useMediaQuery } from '@mantine/hooks';
 import { IconChevronDown, IconCreditCard, IconPencil, IconPlus, IconTrash, IconX } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -32,6 +34,7 @@ import {
   confirmDelete,
   Editable,
   EmptyState,
+  Figure,
   PageHeader,
   RowActions,
   SectionCard,
@@ -110,6 +113,9 @@ export default function BudgetPage() {
   const { data: items = [], isLoading } = useQuery({ queryKey: ['budget-items'], queryFn: api.budgetItems });
   const { data: summary } = useQuery({ queryKey: ['budget-summary'], queryFn: api.budgetSummary });
   const remove = useAppMutation((id: number) => api.deleteBudgetItem(id), 'Budget item deleted');
+  const deleteItem = (item: BudgetItem) => confirmDelete(`"${item.name}"`, () => remove.mutate(item.id));
+  // Phones get the items as an expandable list instead of the table.
+  const phone = useMediaQuery('(max-width: 36em)') ?? false;
 
   const income = items.filter((i) => i.category.kind === 'income');
   const expenses = items.filter((i) => i.category.kind === 'expense');
@@ -160,6 +166,19 @@ export default function BudgetPage() {
             </Button>
           </Group>
         }
+      />
+    ) : phone ? (
+      <BudgetItemList
+        rows={sortItems(rows, sort)}
+        kind={kind}
+        sort={sort}
+        onSort={(next) => {
+          const all = { ...sorts, [kind]: next };
+          setSorts(all);
+          saveSorts(all);
+        }}
+        onEdit={(item) => setEditing({ kind, item })}
+        onDelete={deleteItem}
       />
     ) : (
       <Table.ScrollContainer minWidth={560} className="phone-fit">
@@ -218,7 +237,7 @@ export default function BudgetPage() {
                     label={`Actions for ${item.name}`}
                     actions={[
                       { label: 'Edit', icon: <IconPencil size={16} />, onClick: () => setEditing({ kind, item }) },
-                      { label: 'Delete', icon: <IconTrash size={16} />, color: 'red', onClick: () => confirmDelete(`"${item.name}"`, () => remove.mutate(item.id)) },
+                      { label: 'Delete', icon: <IconTrash size={16} />, color: 'red', onClick: () => deleteItem(item) },
                     ]}
                   />
                 </Table.Td>
@@ -326,6 +345,172 @@ export default function BudgetPage() {
 
       <BudgetItemModal editing={editing} onClose={() => setEditing(null)} />
     </>
+  );
+}
+
+/** Sort choices for phones, where the table's sortable headers aren't shown. */
+const PHONE_SORTS = [
+  { value: 'name-asc', label: 'Name A–Z' },
+  { value: 'name-desc', label: 'Name Z–A' },
+  { value: 'monthly-desc', label: 'Largest per month' },
+  { value: 'monthly-asc', label: 'Smallest per month' },
+  { value: 'category-asc', label: 'Category A–Z' },
+];
+
+/**
+ * Phones: budget items as a list, like the Investments holdings. A row shows the name and the monthly
+ * amount; tapping it opens the rest (amount and how often, category, notes, and for a paycheck its gross
+ * pay and deductions per paycheck) with Edit and Delete.
+ */
+function BudgetItemList({
+  rows,
+  kind,
+  sort,
+  onSort,
+  onEdit,
+  onDelete,
+}: {
+  rows: BudgetItem[];
+  kind: CategoryKind;
+  sort: Sort;
+  onSort: (sort: Sort) => void;
+  onEdit: (item: BudgetItem) => void;
+  onDelete: (item: BudgetItem) => void;
+}) {
+  const [open, setOpen] = useState<Set<number>>(new Set());
+  const toggle = (id: number) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  // The per-payment "amount" sort has no phone choice; it shows as the per-month one, which is closest.
+  const sortValue = `${sort.key === 'amount' ? 'monthly' : sort.key}-${sort.dir}`;
+
+  return (
+    <Stack gap={2}>
+      <Select
+        aria-label={kind === 'income' ? 'Sort income' : 'Sort expenses'}
+        data={PHONE_SORTS}
+        value={PHONE_SORTS.some((o) => o.value === sortValue) ? sortValue : 'name-asc'}
+        onChange={(v) => {
+          if (!v) return;
+          const [key, dir] = v.split('-') as [SortKey, SortDir];
+          onSort({ key, dir });
+        }}
+        allowDeselect={false}
+        mb="xs"
+      />
+      {rows.map((item) => {
+        const isOpen = open.has(item.id);
+        const byType = new Map<DeductionType, number>();
+        for (const d of item.deductions) byType.set(d.type, (byType.get(d.type) ?? 0) + d.amount);
+        // Gross minus the entered deductions minus take-home: what the deductions don't account for. Named
+        // like the Income breakdown card: mostly withholding when no taxes are entered.
+        const unitemized =
+          item.gross_amount == null
+            ? 0
+            : Math.round((item.gross_amount - item.deductions.reduce((t, d) => t + d.amount, 0) - item.amount) * 100) / 100;
+        return (
+          <div key={item.id} className="expand-row" data-open={isOpen || undefined}>
+            <UnstyledButton
+              className="expand-row-head"
+              onClick={() => toggle(item.id)}
+              aria-expanded={isOpen}
+              aria-controls={`budget-item-${item.id}`}
+            >
+              <Group justify="space-between" wrap="nowrap" gap="sm">
+                <Group gap={6} wrap="nowrap" style={{ minWidth: 0 }}>
+                  <Text size="sm" fw={600}>
+                    {item.name}
+                  </Text>
+                  {item.paid_by_card && <IconCreditCard size={14} color="var(--mantine-color-dimmed)" aria-label="Paid by card" />}
+                </Group>
+                <Group gap={6} wrap="nowrap">
+                  <Text size="sm" fw={600} className="num">
+                    {money(item.monthly_amount)}
+                  </Text>
+                  <IconChevronDown size={16} className="expand-chevron" aria-hidden />
+                </Group>
+              </Group>
+            </UnstyledButton>
+            <Collapse in={isOpen}>
+              <div className="expand-details" id={`budget-item-${item.id}`}>
+                <SimpleGrid cols={2} spacing="sm" verticalSpacing="sm">
+                  <Figure label={kind === 'income' ? 'Take-home' : 'Amount'}>{money(item.amount)}</Figure>
+                  <Figure label="How often">{FREQUENCY_LABELS[item.frequency]}</Figure>
+                </SimpleGrid>
+                <Text className="label-sm" mt="sm">
+                  Category
+                </Text>
+                <Group mt={4}>
+                  <CategoryBadge category={item.category} />
+                </Group>
+                {item.gross_amount != null && (
+                  // Per paycheck, like the form: gross pay, each kind of deduction, then what's deposited.
+                  <>
+                    <Text className="label-sm" mt="sm" mb={4}>
+                      Per paycheck
+                    </Text>
+                    <Stack gap={2}>
+                      <PaycheckLine label="Gross pay" amount={item.gross_amount} />
+                      {[...byType].map(([type, amount]) => (
+                        <PaycheckLine key={type} label={DEDUCTION_TYPE_LABELS[type]} amount={-amount} />
+                      ))}
+                      {unitemized !== 0 && (
+                        <PaycheckLine label={byType.has('tax') ? 'Not itemized' : 'Taxes or not itemized'} amount={-unitemized} />
+                      )}
+                      <PaycheckLine label="Take-home" amount={item.amount} strong />
+                    </Stack>
+                  </>
+                )}
+                {item.paid_by_card && (
+                  <Text size="sm" c="dimmed" mt="sm">
+                    Paid by credit card: in a statement month it&apos;s compared with card payments.
+                  </Text>
+                )}
+                {item.notes && (
+                  <Text size="sm" c="dimmed" mt="sm">
+                    {item.notes}
+                  </Text>
+                )}
+                <Editable>
+                  <Group gap="xs" mt="sm" wrap="nowrap">
+                    <Button variant="default" leftSection={<IconPencil size={16} />} onClick={() => onEdit(item)} style={{ flex: 1 }}>
+                      Edit
+                    </Button>
+                    <ActionIcon variant="default" aria-label={`Delete ${item.name}`} onClick={() => onDelete(item)}>
+                      <IconTrash size={16} color="var(--delta-down)" />
+                    </ActionIcon>
+                  </Group>
+                </Editable>
+              </div>
+            </Collapse>
+          </div>
+        );
+      })}
+      <Group justify="space-between" wrap="nowrap" className="list-total" mt="xs">
+        <Text fw={700}>Total per month</Text>
+        <Text fw={700} className="num">
+          {money(rows.reduce((sum, r) => sum + r.monthly_amount, 0))}
+        </Text>
+      </Group>
+    </Stack>
+  );
+}
+
+/** One line of a paycheck's breakdown; deductions come in negative. */
+function PaycheckLine({ label, amount, strong }: { label: string; amount: number; strong?: boolean }) {
+  return (
+    <Group justify="space-between" wrap="nowrap">
+      <Text size="sm" c={strong ? undefined : 'dimmed'} fw={strong ? 600 : undefined}>
+        {label}
+      </Text>
+      <Text size="sm" className="num" fw={strong ? 600 : 500}>
+        {amount < 0 ? `−${money(-amount)}` : money(amount)}
+      </Text>
+    </Group>
   );
 }
 
