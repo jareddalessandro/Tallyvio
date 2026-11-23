@@ -3,6 +3,7 @@ import {
   ActionIcon,
   Alert,
   Anchor,
+  Autocomplete,
   Badge,
   Box,
   Button,
@@ -39,6 +40,7 @@ import {
   IconPencil,
   IconPlus,
   IconRefresh,
+  IconSearch,
   IconTrash,
 } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
@@ -150,6 +152,14 @@ export default function StocksPage() {
   const accountFilter = accountParam == null ? null : accountParam === UNASSIGNED ? UNASSIGNED : Number(accountParam);
   const filterName =
     accountFilter === UNASSIGNED ? 'Unassigned' : accounts.find((a) => a.id === accountFilter)?.name ?? 'this account';
+  // The Ledger follows the account selector, then the ledger's own holding search.
+  const [ledgerSearch, setLedgerSearch] = useState('');
+  const accountLedger =
+    accountFilter == null
+      ? ledger
+      : ledger.filter((t) => (accountFilter === UNASSIGNED ? t.account_id == null : t.account_id === accountFilter));
+  const ledgerTickers = [...new Set(accountLedger.map(ledgerTicker))].sort((a, b) => a.localeCompare(b));
+  const ledgerShown = filterLedger(accountLedger, ledgerSearch);
   const shown =
     accountFilter == null
       ? holdings
@@ -522,15 +532,30 @@ export default function StocksPage() {
         )}
 
         {(holdings.length > 0 || ledger.length > 0) && (
-          <SectionCard title="Ledger">
+          <SectionCard
+            title="Ledger"
+            actions={
+              accountLedger.length > 0 || ledgerSearch ? (
+                // Type to narrow by any part of a ticker; the suggestions list the holdings in the ledger
+                // (they filter as you type, so a long list stays usable).
+                <Autocomplete
+                  placeholder="Search holding"
+                  aria-label="Search the ledger by holding"
+                  leftSection={<IconSearch size={16} stroke={1.6} />}
+                  data={ledgerTickers}
+                  value={ledgerSearch}
+                  onChange={setLedgerSearch}
+                  clearable
+                  w={{ base: '100%', xs: 220 }}
+                />
+              ) : undefined
+            }
+          >
             <Ledger
-              key={accountParam ?? ''}
-              entries={
-                accountFilter == null
-                  ? ledger
-                  : ledger.filter((t) => (accountFilter === UNASSIGNED ? t.account_id == null : t.account_id === accountFilter))
-              }
+              key={`${accountParam ?? ''}|${ledgerSearch}`}
+              entries={ledgerShown}
               filtered={accountFilter != null}
+              search={ledgerSearch.trim()}
             />
           </SectionCard>
         )}
@@ -1132,8 +1157,22 @@ function LedgerKindBadge({ kind }: { kind: InvestmentTxnKind }) {
 /** "+$520.00 to cash" / "−$750.30 from cash" */
 const cashLabel = (change: number) => `${signedMoney(change)} ${change < 0 ? 'from' : 'to'} cash`;
 
+/** How a ledger entry's holding reads in the search: its ticker, or "Cash". */
+const ledgerTicker = (t: InvestmentTransaction) => (t.asset_type === 'cash' ? 'Cash' : t.ticker);
+
+/**
+ * Entries whose holding matches the search. A picked suggestion (an exact ticker) matches only that
+ * holding, so choosing "BTC-USD" doesn't also show "BTC-EUR"; anything else matches any part of a ticker.
+ */
+function filterLedger(entries: InvestmentTransaction[], search: string) {
+  const q = search.trim().toLowerCase();
+  if (!q) return entries;
+  const exact = entries.filter((t) => ledgerTicker(t).toLowerCase() === q);
+  return exact.length > 0 ? exact : entries.filter((t) => ledgerTicker(t).toLowerCase().includes(q));
+}
+
 /** Every recorded buy, sell, deposit and withdrawal, newest first. Deleting an entry only removes the record. */
-function Ledger({ entries, filtered }: { entries: InvestmentTransaction[]; filtered: boolean }) {
+function Ledger({ entries, filtered, search }: { entries: InvestmentTransaction[]; filtered: boolean; search: string }) {
   const [page, setPage] = useState(1);
   const remove = useAppMutation((id: number) => api.deleteInvestmentTransaction(id), 'Ledger entry deleted');
   const pages = Math.max(1, Math.ceil(entries.length / LEDGER_PAGE_SIZE));
@@ -1158,7 +1197,9 @@ function Ledger({ entries, filtered }: { entries: InvestmentTransaction[]; filte
     return (
       <EmptyState
         message={
-          filtered
+          search
+            ? `No entries for a holding matching “${search}”${filtered ? ' in this account' : ''}.`
+            : filtered
             ? 'Nothing recorded for this account yet.'
             : 'Buys, sells, deposits and withdrawals show up here as you record them (use Buy or sell on a holding).'
         }
@@ -1341,7 +1382,8 @@ function Ledger({ entries, filtered }: { entries: InvestmentTransaction[]; filte
         {sales.length > 0 ? (
           <Group gap={6}>
             <Text size="sm" c="dimmed">
-              Realized gain{filtered ? ' in this account' : ''}:
+              Realized gain{search ? ` on ${search.toUpperCase()}` : ''}
+              {filtered ? ' in this account' : ''}:
             </Text>
             <Delta value={realized} />
             <Text size="sm" c="dimmed">
