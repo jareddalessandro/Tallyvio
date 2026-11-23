@@ -5,6 +5,7 @@ import { useMemo, useState, type FormEvent } from 'react';
 
 import { api } from '../api';
 import type { Me } from '../types';
+import { Logo } from '../components/Logo';
 
 /** Every IANA zone the browser knows, with the browser's own first. */
 export function timezoneOptions(current?: string): string[] {
@@ -64,9 +65,7 @@ export default function OnboardingPage({ me }: { me: Me }) {
       <Card w="100%" maw={460} p={{ base: 'lg', sm: 'xl' }}>
         <form onSubmit={submit}>
           <Stack gap="lg">
-            <Text className="headline" fw={800} size="lg" lts="-0.01em">
-              💰 Tallyvio
-            </Text>
+            <Logo />
             <div>
               <Title order={1} fz="1.75rem" lts="-0.01em" mb={6}>
                 {setup ? `Welcome${firstName ? `, ${firstName}` : ''}` : "We've updated our terms"}

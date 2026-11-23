@@ -15,6 +15,7 @@ import { Link } from 'react-router-dom';
 
 import { GoogleSignInButton, SignInError } from '../components/SignIn';
 import type { Site } from '../types';
+import { Logo } from '../components/Logo';
 
 const FEATURES = [
   {
@@ -64,9 +65,7 @@ export default function LandingPage({ site }: { site: Site | undefined }) {
     <Box>
       <Container size="lg" px="md">
         <Group justify="space-between" py="lg">
-          <Text className="headline" fw={800} size="lg" lts="-0.01em">
-            💰 Tallyvio
-          </Text>
+          <Logo />
           <GoogleSignInButton size="sm" label="Sign in" />
         </Group>
 

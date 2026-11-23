@@ -20,6 +20,7 @@ import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import { api, ApiError, currentHouseholdId, setHouseholdId, SIGNED_OUT_EVENT } from './api';
 import { CanEditContext } from './components/common';
+import { Logo } from './components/Logo';
 import { householdLabel, PendingInvites } from './components/Sharing';
 import type { Me, Site } from './types';
 
@@ -299,10 +300,3 @@ function UserRow({ user }: { user: Me['user'] }) {
   );
 }
 
-function Logo() {
-  return (
-    <Text className="headline" fw={800} size="lg" lts="-0.01em">
-      💰 Tallyvio
-    </Text>
-  );
-}
